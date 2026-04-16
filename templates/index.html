@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PromptPay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #101820 0%, #183446 100%);
+            color: #f4f7fb;
+            font-family: Arial, sans-serif;
+            padding: 24px;
+        }
+
+        .container {
+            width: min(100%, 360px);
+            text-align: center;
+            padding: 24px;
+            background-color: rgba(18, 34, 44, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+        }
+
+        h1 {
+            margin-bottom: 12px;
+        }
+
+        p {
+            margin-bottom: 16px;
+            color: #b7c7d6;
+            font-size: 15px;
+        }
+
+        img {
+            width: 100%;
+            max-width: 280px;
+            margin-bottom: 20px;
+            border-radius: 12px;
+            background: white;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            background-color: #0f2531;
+            color: #f4f7fb;
+            border: 1px solid #315164;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        input::placeholder {
+            color: #7e99ab;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PromptPay</h1>
+        <p>QR Code</p>
+        <img id="qrImg" src="https://promptpay.io/{{ phone }}/.png" alt="QR Code">
+        <input id="amountInput" type="number" min="0" step="0.01" placeholder="Enter amount">
+    </div>
+    <script>
+        const amountInput = document.getElementById('amountInput');
+        const qrImg = document.getElementById('qrImg');
+        const phone = {{ phone|tojson }};
+
+        amountInput.addEventListener('input', function () {
+            const amount = this.value.trim();
+            qrImg.src = amount
+                ? `https://promptpay.io/${phone}/${amount}.png`
+                : `https://promptpay.io/${phone}/.png`;
+        });
+    </script>
+</body>
+</html>
