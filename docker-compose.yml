@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: dockerfile
-    ports:
-      - "5002:5000"
     volumes:
       - .:/app
     environment:
