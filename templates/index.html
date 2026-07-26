@@ -1,88 +1,727 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#EBD3D8">
     <title>PromptPay</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://promptpay.io">
+    <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans+Thai+Looped:wght@400;600&display=swap" rel="stylesheet">
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            /* Thai banknote denominations — the palette is the money itself */
+            --n20:   #2F7A54;
+            --n50:   #2F6796;
+            --n100:  #A8423B;
+            --n500:  #664B87;
+            --n1000: #7E6140;
+            /* Drawn from the wallpaper: Lacus's rose and violet, Cagalli's gold */
+            --field:      #EBD3D8;
+            --note:       #FFFFFF;
+            --note-edge:  #EADCE1;
+            --ink:        #2A1F28;
+            --ink-soft:   #7B6470;
+            --on-field:   #3A2B33;
+            --on-field-soft: #6E5A64;
+            --violet:     #6B5B9E;
+            --surface:    rgba(255, 255, 255, 0.74);
+            --surface-line: rgba(90, 60, 80, 0.22);
+
+            --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+            --body: "IBM Plex Sans Thai Looped", "Noto Sans Thai", system-ui, sans-serif;
+
+            --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
         }
+
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            min-height: 100vh;
+            min-height: 100svh;
+            /* Solid tone first: if the remote image fails, the page still reads */
+            background: var(--field);
+            color: var(--on-field);
+            font-family: var(--body);
+            -webkit-font-smoothing: antialiased;
             display: flex;
+            justify-content: center;
+            padding: clamp(16px, 5vw, 40px) 20px calc(28px + env(safe-area-inset-bottom));
+        }
+
+        /* Fixed layer rather than background-attachment, which iOS Safari breaks */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            background-image: url("{{ url_for('static', filename='bg.jpg') }}");
+            background-size: cover;
+            background-position: 50% 48%;
+            /* Source is a 728px preview; a touch of blur hides the upscale,
+               and the scale keeps blurred edges off the viewport */
+            filter: blur(2px);
+            transform: scale(1.06);
+        }
+
+        /* Portrait crops to a strip of hair — frame Lacus instead.
+           cover is height-constrained here, so it leaves no vertical slack;
+           the extra height is what gives background-position something to move. */
+        @media (max-aspect-ratio: 1/1) {
+            body::before {
+                background-size: auto 122%;
+                background-position: 33% 34%;
+            }
+        }
+
+        /* Scrim: keeps text and the code legible over a busy image */
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background:
+                radial-gradient(90% 55% at 50% 26%, rgba(255, 250, 252, 0.42) 0%, transparent 70%),
+                linear-gradient(
+                    180deg,
+                    rgba(250, 232, 240, 0.30) 0%,
+                    rgba(250, 235, 228, 0.56) 42%,
+                    rgba(247, 231, 214, 0.80) 100%
+                );
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            width: min(100%, 420px);
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        /* ---------- The note ---------- */
+
+        .note {
+            position: relative;
+            background: var(--note);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.75),
+                0 22px 55px -20px rgba(88, 44, 66, 0.55);
+        }
+
+        .note-body {
+            padding: 22px 22px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .mark {
+            width: 100%;
+            align-self: flex-start;
+        }
+
+        .mark-th {
+            display: block;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            color: var(--ink);
+        }
+
+        .mark-en {
+            display: block;
+            margin-top: 1px;
+            font-size: 9.5px;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+        }
+
+        /* ---------- QR ---------- */
+
+        .qr {
+            position: relative;
+            width: 100%;
+            max-width: 264px;
+            aspect-ratio: 1;
+            margin: 18px 0 4px;
+            background: #FFFFFF;
+            border-radius: 8px;
+        }
+
+        .qr-layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 260ms var(--ease);
+        }
+
+        .qr-layer.is-shown { opacity: 1; }
+
+        .qr-state {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #101820 0%, #183446 100%);
-            color: #f4f7fb;
-            font-family: Arial, sans-serif;
-            padding: 24px;
-        }
-
-        .container {
-            width: min(100%, 360px);
+            gap: 10px;
+            padding: 20px;
             text-align: center;
-            padding: 24px;
-            background-color: rgba(18, 34, 44, 0.92);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+            background: var(--note);
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--ink-soft);
         }
 
-        h1 {
-            margin-bottom: 12px;
+        .qr.is-loading .qr-state--loading,
+        .qr.is-failed  .qr-state--failed { display: flex; }
+
+        .qr.is-failed .qr-layer { opacity: 0; }
+
+        .spinner {
+            width: 22px;
+            height: 22px;
+            border: 2px solid var(--note-edge);
+            border-top-color: var(--ink-soft);
+            border-radius: 50%;
+            animation: spin 700ms linear infinite;
         }
 
-        p {
-            margin-bottom: 16px;
-            color: #b7c7d6;
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .retry {
+            font-family: var(--body);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--ink);
+            background: none;
+            border: 0;
+            border-bottom: 1.5px solid var(--ink);
+            padding: 0 0 1px;
+            cursor: pointer;
+        }
+
+        /* ---------- Amount ---------- */
+
+        .amount {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 14px;
+            color: var(--ink);
+            font-family: var(--display);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .amount-symbol {
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--ink-soft);
+        }
+
+        .amount-value {
+            font-size: clamp(40px, 13vw, 52px);
+            font-weight: 700;
+            letter-spacing: -0.035em;
+        }
+
+        .amount.is-long .amount-value {
+            font-size: clamp(28px, 8.5vw, 36px);
+        }
+
+        .amount.is-open .amount-symbol { display: none; }
+
+        .amount.is-open .amount-value {
+            font-family: var(--body);
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0;
+            color: var(--ink-soft);
+        }
+
+        .amount-note {
+            margin-top: 9px;
+            font-size: 12.5px;
+            color: var(--ink-soft);
+            text-align: center;
+        }
+
+        /* ---------- Serial ---------- */
+
+        .serial {
+            width: 100%;
+            margin-top: 20px;
+            padding-top: 14px;
+            border-top: 1px solid var(--note-edge);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .serial-value {
+            font-family: var(--display);
             font-size: 15px;
+            font-weight: 500;
+            letter-spacing: 0.14em;
+            font-variant-numeric: tabular-nums;
+            color: var(--ink);
         }
 
-        img {
-            width: 100%;
-            max-width: 280px;
-            margin-bottom: 20px;
-            border-radius: 12px;
-            background: white;
+        .copy {
+            font-family: var(--body);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+            background: none;
+            border: 1px solid var(--note-edge);
+            border-radius: 999px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: color 160ms var(--ease), border-color 160ms var(--ease);
         }
 
-        input {
-            width: 100%;
+        .copy:hover { color: var(--ink); border-color: var(--ink-soft); }
+        .copy.is-done { color: var(--ink); border-color: var(--ink); }
+
+        /* ---------- Instruction ---------- */
+
+        .instruction { text-align: center; }
+
+        .instruction-th {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+
+        .instruction-en {
+            margin-top: 4px;
+            font-size: 13px;
+            color: var(--on-field-soft);
+        }
+
+        /* ---------- Denominations ---------- */
+
+        .notes {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 7px;
+        }
+
+        .denom {
+            position: relative;
+            font-family: var(--display);
+            font-size: clamp(15px, 4.4vw, 18px);
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.02em;
+            color: #fff;
+            background: var(--denom);
+            border: 0;
+            border-radius: 8px;
+            padding: 15px 2px;
+            cursor: pointer;
+            box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.24);
+            transition: transform 120ms var(--ease), box-shadow 120ms var(--ease);
+        }
+
+        .denom::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 8px;
+            background: repeating-linear-gradient(
+                -62deg,
+                rgba(255, 255, 255, 0.09) 0px,
+                rgba(255, 255, 255, 0.09) 1px,
+                transparent 1px,
+                transparent 6px
+            );
+        }
+
+        .denom:active {
+            transform: translateY(2px);
+            box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+        }
+
+        /* Only dim the others once one is actually chosen */
+        .notes.has-active .denom { opacity: 0.58; }
+
+        .notes.has-active .denom.is-active {
+            opacity: 1;
+            box-shadow:
+                inset 0 0 0 2px rgba(255, 255, 255, 0.92),
+                inset 0 -2px 0 rgba(0, 0, 0, 0.24);
+        }
+
+        .denom-20   { --denom: var(--n20); }
+        .denom-50   { --denom: var(--n50); }
+        .denom-100  { --denom: var(--n100); }
+        .denom-500  { --denom: var(--n500); }
+        .denom-1000 { --denom: var(--n1000); }
+
+        /* ---------- Controls ---------- */
+
+        .entry {
+            display: flex;
+            gap: 7px;
+        }
+
+        .entry-field {
+            position: relative;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .entry-symbol {
+            position: absolute;
+            /* Above the input: its backdrop-filter makes a stacking context */
+            z-index: 1;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-family: var(--display);
+            font-size: 17px;
+            font-weight: 500;
+            color: var(--ink-soft);
+            pointer-events: none;
+        }
+
+        .control {
+            font-family: var(--body);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--on-field);
+            background: var(--surface);
+            border: 1px solid var(--surface-line);
+            border-radius: 8px;
             padding: 12px;
-            background-color: #0f2531;
-            color: #f4f7fb;
-            border: 1px solid #315164;
-            border-radius: 10px;
-            font-size: 14px;
+            cursor: pointer;
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+            transition: background 160ms var(--ease), opacity 160ms var(--ease);
         }
 
-        input::placeholder {
-            color: #7e99ab;
+        .control:hover { background: rgba(255, 255, 255, 0.92); }
+
+        .control[disabled] {
+            opacity: 0.32;
+            cursor: default;
+        }
+
+        .exact-field {
+            width: 100%;
+            font-family: var(--display);
+            font-size: 17px;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+            color: var(--on-field);
+            background: var(--surface);
+            border: 1px solid var(--surface-line);
+            border-radius: 8px;
+            padding: 12px 14px 12px 32px;
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+        }
+
+        .exact-field::placeholder { color: var(--on-field-soft); opacity: 0.7; }
+        .exact-field::-webkit-outer-spin-button,
+        .exact-field::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* ---------- Foot ---------- */
+
+        .foot {
+            text-align: center;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--on-field-soft);
+            opacity: 0.8;
+        }
+
+        /* ---------- Missing config ---------- */
+
+        .setup {
+            padding: 26px 22px;
+            text-align: center;
+        }
+
+        .setup-title {
+            font-family: var(--display);
+            font-size: 21px;
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        .setup-body {
+            margin-top: 8px;
+            font-size: 13.5px;
+            line-height: 1.55;
+            color: var(--ink-soft);
+        }
+
+        .setup-body code {
+            font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+            font-size: 12.5px;
+            background: #F1ECEE;
+            border-radius: 4px;
+            padding: 2px 5px;
+        }
+
+        /* ---------- Floor ---------- */
+
+        :focus-visible {
+            outline: 2px solid var(--violet);
+            outline-offset: 3px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>PromptPay</h1>
-        <p>QR Code</p>
-        <img id="qrImg" src="https://promptpay.io/{{ phone }}/.png" alt="QR Code">
-        <input id="amountInput" type="number" min="0" step="0.01" placeholder="Enter amount">
-    </div>
-    <script>
-        const amountInput = document.getElementById('amountInput');
-        const qrImg = document.getElementById('qrImg');
-        const phone = {{ phone|tojson }};
+{% if phone %}
+    <main class="page">
+        <section class="note">
+            <div class="note-body">
+                <div class="mark">
+                    <span class="mark-th">พร้อมเพย์</span>
+                    <span class="mark-en">PromptPay</span>
+                </div>
 
-        amountInput.addEventListener('input', function () {
-            const amount = this.value.trim();
-            qrImg.src = amount
-                ? `https://promptpay.io/${phone}/${amount}.png`
-                : `https://promptpay.io/${phone}/.png`;
+                <div class="qr is-loading" id="qr">
+                    <img class="qr-layer" id="qrA" alt="PromptPay QR code">
+                    <img class="qr-layer" id="qrB" alt="" aria-hidden="true">
+                    <div class="qr-state qr-state--loading">
+                        <div class="spinner"></div>
+                    </div>
+                    <div class="qr-state qr-state--failed">
+                        <span>The code didn't load.</span>
+                        <button type="button" class="retry" id="retry">Try again</button>
+                    </div>
+                </div>
+
+                <div class="amount is-open" id="amount">
+                    <span class="amount-symbol">฿</span>
+                    <span class="amount-value" id="amountValue">Any amount</span>
+                </div>
+                <p class="amount-note" id="amountNote">You enter it in your banking app.</p>
+
+                <div class="serial">
+                    <span class="serial-value" id="serial"></span>
+                    <button type="button" class="copy" id="copy">Copy</button>
+                </div>
+            </div>
+        </section>
+
+        <div class="instruction">
+            <p class="instruction-th">สแกนเพื่อจ่าย</p>
+            <p class="instruction-en">Scan with any Thai banking app</p>
+        </div>
+
+        <div class="notes" id="notes">
+            <button type="button" class="denom denom-20"   data-amount="20"   aria-pressed="false">20</button>
+            <button type="button" class="denom denom-50"   data-amount="50"   aria-pressed="false">50</button>
+            <button type="button" class="denom denom-100"  data-amount="100"  aria-pressed="false">100</button>
+            <button type="button" class="denom denom-500"  data-amount="500"  aria-pressed="false">500</button>
+            <button type="button" class="denom denom-1000" data-amount="1000" aria-pressed="false">1000</button>
+        </div>
+
+        <div class="entry">
+            <div class="entry-field">
+                <span class="entry-symbol" aria-hidden="true">฿</span>
+                <input class="exact-field" id="exactField" type="number" inputmode="decimal"
+                       min="0" max="2000000" step="0.01" placeholder="0.00" aria-label="Amount in baht">
+            </div>
+            <button type="button" class="control" id="clear" disabled>Clear</button>
+        </div>
+
+        <p class="foot">Codes generated by promptpay.io</p>
+    </main>
+
+    <script>
+        const PHONE = {{ phone|tojson }};
+
+        const qr = document.getElementById('qr');
+        const amountEl = document.getElementById('amount');
+        const amountValue = document.getElementById('amountValue');
+        const amountNote = document.getElementById('amountNote');
+        const clearBtn = document.getElementById('clear');
+        const exactField = document.getElementById('exactField');
+        const notes = document.getElementById('notes');
+        const denoms = [...document.querySelectorAll('.denom')];
+
+        let layers = [document.getElementById('qrA'), document.getElementById('qrB')];
+        let total = 0;
+        let debounce;
+        let requestId = 0;
+
+        const baht = new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
         });
+
+        /* Group the identifier like a banknote serial: 081 234 5678 */
+        function formatId(value) {
+            const digits = String(value).replace(/\D/g, '');
+            if (digits.length === 10) {
+                return digits.replace(/(\d{3})(\d{3})(\d{4})/, '$1 $2 $3');
+            }
+            return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+        }
+
+        function urlFor(amount) {
+            const suffix = amount > 0 ? amount.toFixed(2) : '';
+            return `https://promptpay.io/${encodeURIComponent(PHONE)}/${suffix}.png`;
+        }
+
+        function render() {
+            if (total > 0) {
+                amountEl.classList.remove('is-open');
+                amountValue.textContent = baht.format(total);
+                amountEl.classList.toggle('is-long', amountValue.textContent.length > 9);
+            } else {
+                amountEl.classList.add('is-open');
+                amountValue.textContent = 'Any amount';
+            }
+
+            setNote();
+            syncNotes();
+            clearBtn.disabled = total === 0;
+            loadCode();
+        }
+
+        /* A chip reads as chosen only when the total is exactly that note */
+        function syncNotes() {
+            let matched = false;
+            denoms.forEach(btn => {
+                const on = total > 0 && Number(btn.dataset.amount) === total;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-pressed', String(on));
+                if (on) matched = true;
+            });
+            notes.classList.toggle('has-active', matched);
+        }
+
+        /* Never tell someone to scan a code that isn't there */
+        function setNote() {
+            if (qr.classList.contains('is-failed')) {
+                amountNote.textContent = 'Transfer to the number below instead.';
+            } else if (total > 0) {
+                amountNote.textContent = 'Already set — just scan.';
+            } else {
+                amountNote.textContent = 'You enter it in your banking app.';
+            }
+        }
+
+        /* Preload into the hidden layer, then cross-fade — never show a half-drawn code */
+        function loadCode() {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => {
+                const id = ++requestId;
+                const next = layers[1];
+                const src = urlFor(total);
+
+                qr.classList.add('is-loading');
+                qr.classList.remove('is-failed');
+
+                next.onload = () => {
+                    if (id !== requestId) return;
+                    layers[0].classList.remove('is-shown');
+                    next.classList.add('is-shown');
+                    layers.reverse();
+                    qr.classList.remove('is-loading');
+                    setNote();
+                };
+                next.onerror = () => {
+                    if (id !== requestId) return;
+                    qr.classList.remove('is-loading');
+                    qr.classList.add('is-failed');
+                    setNote();
+                };
+                next.src = src;
+            }, 280);
+        }
+
+        function setTotal(value) {
+            total = Math.min(Math.max(Math.round(value * 100) / 100, 0), 2000000);
+            render();
+        }
+
+        denoms.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const amount = Number(btn.dataset.amount);
+                exactField.value = String(amount);
+                setTotal(amount);
+            });
+        });
+
+        clearBtn.addEventListener('click', () => {
+            exactField.value = '';
+            setTotal(0);
+        });
+
+        document.getElementById('retry').addEventListener('click', loadCode);
+
+        exactField.addEventListener('input', () => setTotal(Number(exactField.value) || 0));
+        exactField.addEventListener('keydown', e => {
+            if (e.key === 'Enter') exactField.blur();
+        });
+        exactField.addEventListener('blur', () => {
+            qr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        });
+
+        const copyBtn = document.getElementById('copy');
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(PHONE);
+                copyBtn.textContent = 'Copied';
+                copyBtn.classList.add('is-done');
+                setTimeout(() => {
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.classList.remove('is-done');
+                }, 1600);
+            } catch {
+                copyBtn.textContent = 'Press and hold';
+                setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1600);
+            }
+        });
+
+        document.getElementById('serial').textContent = formatId(PHONE);
+        render();
     </script>
+{% else %}
+    <main class="page">
+        <section class="note">
+            <div class="setup">
+                <h1 class="setup-title">No account set</h1>
+                <p class="setup-body">
+                    Add your PromptPay phone number or national ID to
+                    <code>.env</code> as <code>PHONE</code>, then restart the app.
+                </p>
+            </div>
+        </section>
+    </main>
+{% endif %}
 </body>
 </html>
